@@ -1,0 +1,280 @@
+{
+	"info": {
+		"_postman_id": "e6be8c96-8e51-44fb-9581-c72d825aac57",
+		"name": "Pronto_API_UAT",
+		"schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+	},
+	"item": [
+		{
+			"name": "tno.request",
+			"protocolProfileBehavior": {
+				"strictSSL": false
+			},
+			"request": {
+				"auth": {
+					"type": "basic",
+					"basic": [
+						{
+							"key": "username",
+							"value": "apiuatuser",
+							"type": "string"
+						},
+						{
+							"key": "password",
+							"value": "F7xJ#uj.",
+							"type": "string"
+						}
+					]
+				},
+				"method": "POST",
+				"header": [],
+				"body": {
+					"mode": "raw",
+					"raw": "{\r\n    \"request\": \"tno.request\",\r\n    \"data\":\r\n\t{\r\n\t\t\"tno_code\" : \"2\",\r\n\t\t\"customer_code\" : \"A001\"\r\n\t}\r\n}",
+					"options": {
+						"raw": {
+							"language": "json"
+						}
+					}
+				},
+				"url": {
+					"raw": "https://uat-api.prontolanka.lk:18443/PR_API.aspx?method=tno.request",
+					"protocol": "https",
+					"host": [
+						"uat-api",
+						"prontolanka",
+						"lk"
+					],
+					"port": "18443",
+					"path": [
+						"PR_API.aspx"
+					],
+					"query": [
+						{
+							"key": "method",
+							"value": "tno.request"
+						}
+					]
+				}
+			},
+			"response": []
+		},
+		{
+			"name": "calc.method",
+			"protocolProfileBehavior": {
+				"strictSSL": false
+			},
+			"request": {
+				"auth": {
+					"type": "basic",
+					"basic": [
+						{
+							"key": "username",
+							"value": "apiuatuser",
+							"type": "string"
+						},
+						{
+							"key": "password",
+							"value": "F7xJ#uj.",
+							"type": "string"
+						}
+					]
+				},
+				"method": "POST",
+				"header": [],
+				"body": {
+					"mode": "raw",
+					"raw": "{\r\n    \"request\": \"calc.method\",\r\n    \"data\":\r\n\t{\r\n\t\t\"customer_code\" : \"A001\"\r\n\t}\r\n}",
+					"options": {
+						"raw": {
+							"language": "json"
+						}
+					}
+				},
+				"url": {
+					"raw": "https://uat-api.prontolanka.lk:18443/PR_API.aspx?method=calc.method",
+					"protocol": "https",
+					"host": [
+						"uat-api",
+						"prontolanka",
+						"lk"
+					],
+					"port": "18443",
+					"path": [
+						"PR_API.aspx"
+					],
+					"query": [
+						{
+							"key": "method",
+							"value": "calc.method"
+						}
+					]
+				}
+			},
+			"response": []
+		},
+		{
+			"name": "pkg.amount",
+			"protocolProfileBehavior": {
+				"strictSSL": false
+			},
+			"request": {
+				"auth": {
+					"type": "basic",
+					"basic": [
+						{
+							"key": "username",
+							"value": "apiuatuser",
+							"type": "string"
+						},
+						{
+							"key": "password",
+							"value": "F7xJ#uj.",
+							"type": "string"
+						}
+					]
+				},
+				"method": "POST",
+				"header": [],
+				"body": {
+					"mode": "raw",
+					"raw": "{\r\n    \"request\": \"pkg.amount\",\r\n    \"data\":\r\n\t{\r\n\t\t\"customer_code\" : \"A001\",\r\n\t\t\"pkg_weight\" : 8.00,\r\n\t\t\"pronto_ac\" : \"1\"\r\n\t}\r\n}",
+					"options": {
+						"raw": {
+							"language": "json"
+						}
+					}
+				},
+				"url": {
+					"raw": "https://uat-api.prontolanka.lk:18443/PR_API.aspx?method=pkg.amount",
+					"protocol": "https",
+					"host": [
+						"uat-api",
+						"prontolanka",
+						"lk"
+					],
+					"port": "18443",
+					"path": [
+						"PR_API.aspx"
+					],
+					"query": [
+						{
+							"key": "method",
+							"value": "pkg.amount"
+						}
+					]
+				}
+			},
+			"response": []
+		},
+		{
+			"name": "tno.detail",
+			"protocolProfileBehavior": {
+				"strictSSL": false
+			},
+			"request": {
+				"auth": {
+					"type": "basic",
+					"basic": [
+						{
+							"key": "username",
+							"value": "apiuatuser",
+							"type": "string"
+						},
+						{
+							"key": "password",
+							"value": "F7xJ#uj.",
+							"type": "string"
+						}
+					]
+				},
+				"method": "POST",
+				"header": [],
+				"body": {
+					"mode": "raw",
+					"raw": "{\r\n    \"request\": \"tno.detail\",\r\n    \"data\":\r\n\t{\r\n\t\t\"tno\" : \"COD0000110\",\r\n\t\t\"customer_code\" : \"A001\"\r\n\t}\r\n}",
+					"options": {
+						"raw": {
+							"language": "json"
+						}
+					}
+				},
+				"url": {
+					"raw": "https://uat-api.prontolanka.lk:18443/PR_API.aspx?method=tno.detail",
+					"protocol": "https",
+					"host": [
+						"uat-api",
+						"prontolanka",
+						"lk"
+					],
+					"port": "18443",
+					"path": [
+						"PR_API.aspx"
+					],
+					"query": [
+						{
+							"key": "method",
+							"value": "tno.detail"
+						}
+					]
+				}
+			},
+			"response": []
+		},
+		{
+			"name": "tno.insert",
+			"protocolProfileBehavior": {
+				"strictSSL": false
+			},
+			"request": {
+				"auth": {
+					"type": "basic",
+					"basic": [
+						{
+							"key": "username",
+							"value": "apiuatuser",
+							"type": "string"
+						},
+						{
+							"key": "password",
+							"value": "F7xJ#uj.",
+							"type": "string"
+						}
+					]
+				},
+				"method": "POST",
+				"header": [],
+				"body": {
+					"mode": "raw",
+					"raw": "{\r\n    \"request\": \"tno.insert\",\r\n    \"data\":\r\n\t{\r\n\t\t\"tno\" : \"COD0000119\",\r\n\t\t\"sen_name\" : null,\r\n\t\t\"sen_phone\" : null,\r\n\t\t\"sen_address\" : null,\r\n\t\t\"rec_name\" : \"CONSIGNEE NAME\",\r\n\t\t\"rec_address\" : \"CONSIGNEE ADDRESS\",\r\n\t\t\"rec_phone\" : \"000000000\",\r\n\t\t\"pronto_lc\" : \"0001\",\r\n\t\t\"ivalue\" : \"0.00\",\r\n\t\t\"sameday_del\" : \"yes\",\r\n\t\t\"senc\" : \"no\",\r\n\t\t\"sp_note\" : \"do not break\"\r\n\t}\r\n}",
+					"options": {
+						"raw": {
+							"language": "json"
+						}
+					}
+				},
+				"url": {
+					"raw": "https://uat-api.prontolanka.lk:18443/PR_API.aspx?method=tno.insert",
+					"protocol": "https",
+					"host": [
+						"uat-api",
+						"prontolanka",
+						"lk"
+					],
+					"port": "18443",
+					"path": [
+						"PR_API.aspx"
+					],
+					"query": [
+						{
+							"key": "method",
+							"value": "tno.insert"
+						}
+					]
+				}
+			},
+			"response": []
+		}
+	],
+	"protocolProfileBehavior": {}
+}
