@@ -1,3 +1,4 @@
+import os from "node:os";
 import path from "node:path";
 import {
   existsSync,
@@ -17,9 +18,49 @@ declare global {
   var __SQLITE_CONTEXT__: Promise<SqliteContext> | undefined;
 }
 
-const DATABASE_FILE =
-  process.env.DATABASE_PATH ||
-  path.join(process.cwd(), "data", "app.db");
+function ensureDirectory(dir: string): boolean {
+  if (existsSync(dir)) {
+    return true;
+  }
+  try {
+    mkdirSync(dir, { recursive: true });
+    return true;
+  } catch (error) {
+    console.warn(
+      `Failed to create directory "${dir}": ${(error as Error).message}`,
+    );
+    return false;
+  }
+}
+
+function resolveDatabaseFile(): string {
+  const configuredPath = process.env.DATABASE_PATH;
+  const preferredPath = configuredPath
+    ? path.isAbsolute(configuredPath)
+      ? configuredPath
+      : path.join(process.cwd(), configuredPath)
+    : path.join(process.cwd(), "data", "app.db");
+
+  const preferredDir = path.dirname(preferredPath);
+  if (ensureDirectory(preferredDir)) {
+    return preferredPath;
+  }
+
+  const tmpDir = path.join(
+    process.env.TMPDIR || os.tmpdir(),
+    "kifgo-sqlite",
+  );
+  if (!ensureDirectory(tmpDir)) {
+    throw new Error("Unable to initialize sqlite storage directory");
+  }
+  const fallbackPath = path.join(tmpDir, path.basename(preferredPath));
+  console.warn(
+    `Using fallback sqlite path "${fallbackPath}" because "${preferredDir}" is not writable.`,
+  );
+  return fallbackPath;
+}
+
+const DATABASE_FILE = resolveDatabaseFile();
 
 async function bootstrapDatabase(): Promise<SqliteContext> {
   const SQL = await initSqlJs({
