@@ -64,9 +64,8 @@ function isPaymentSuccessful(payload: WebhookPayload): boolean {
   });
 }
 
-export async function PATCH(request: NextRequest) {
+async function processWebhook(request: NextRequest) {
   console.log("🔔 IPG Webhook: Received payment webhook request");
-
   try {
     const secret = request.headers.get("x-notification-secret");
     if (!secret || secret !== process.env.IPG_WEBHOOK_SECRET) {
@@ -180,4 +179,12 @@ export async function PATCH(request: NextRequest) {
     });
     return handleError(error, "Failed to process payment webhook");
   }
+}
+
+export async function PATCH(request: NextRequest) {
+  return processWebhook(request);
+}
+
+export async function POST(request: NextRequest) {
+  return processWebhook(request);
 }
