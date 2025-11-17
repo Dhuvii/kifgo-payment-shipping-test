@@ -1,12 +1,6 @@
 "use client";
 
-import {
-  ChangeEvent,
-  FormEvent,
-  useEffect,
-  useMemo,
-  useState,
-} from "react";
+import { ChangeEvent, FormEvent, useEffect, useMemo, useState } from "react";
 
 interface SessionRecord {
   sessionId: string;
@@ -30,10 +24,10 @@ const initialFormState = {
   senderName: "Kifgo Test Warehouse",
   senderPhone: "0112345678",
   senderAddress: "Kifgo HQ, Colombo",
-  receiverName: "",
-  receiverPhone: "",
-  receiverAddress: "",
-  location: "Colombo",
+  receiverName: "Uthay",
+  receiverPhone: "0777288480",
+  receiverAddress: "No 24, Sivan Kovil Rd, Thonikkal, Vavuniya",
+  location: "Vavuniya",
   weight: "1",
   isCod: true,
   sameDayDelivery: false,
@@ -448,7 +442,10 @@ export default function Home() {
               <tbody className="divide-y divide-gray-100">
                 {sessions.length === 0 ? (
                   <tr>
-                    <td colSpan={5} className="px-4 py-4 text-center text-gray-500">
+                    <td
+                      colSpan={5}
+                      className="px-4 py-4 text-center text-gray-500"
+                    >
                       No sessions yet. Create one above.
                     </td>
                   </tr>
