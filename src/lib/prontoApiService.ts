@@ -1,9 +1,12 @@
+import https from "node:https";
+import { URL } from "node:url";
+
 /**
  * Pronto Lanka API Service
- * 
+ *
  * This service handles all interactions with the Pronto Lanka TrackerFE Customer Portal API
  * for cost estimation and shipment creation in Sri Lanka.
- * 
+ *
  * Based on Pronto Lanka API Technical Specification v3.1
  */
 
@@ -83,6 +86,12 @@ interface TrackingDetailResponse {
     remarks?: string;
   }>;
   [key: string]: unknown;
+}
+
+interface ProntoHttpResponse<T> {
+  ok: boolean;
+  status: number;
+  body: ProntoApiResponse & T;
 }
 
 export class ProntoApiService {
@@ -170,101 +179,278 @@ export class ProntoApiService {
   private async makeRequest<T extends Record<string, unknown>>(
     method: string,
     data: Record<string, unknown>,
-    retryCount = 0
+    retryCount = 0,
+    forceInsecureTls = false
   ): Promise<ProntoApiResponse & T> {
     const url = `${this.config.baseUrl}?method=${method}`;
-    
+
     const requestBody: Record<string, unknown> = {
       request: method,
-      data
+      data,
     };
 
     console.log(`🚚 Pronto API Request: ${method} (attempt ${retryCount + 1})`, {
       url,
-      requestBody
+      requestBody,
     });
 
+    const allowInsecureTls = this.shouldAllowInsecureTls();
+    const shouldUseInsecureTransport = allowInsecureTls && forceInsecureTls;
+
+    if (shouldUseInsecureTransport) {
+      console.warn(
+        `⚠️ Pronto API: using insecure TLS transport for ${method} due to certificate issues.`
+      );
+    }
+
     try {
-      // Configure dispatcher and timeout handling
-      const isUat = process.env.NODE_ENV === 'development' || this.config.baseUrl.includes('uat-api');
-      type AgentFactory = new (options: {
-        connect?: {
-          timeout?: number;
-          tls?: { rejectUnauthorized?: boolean };
-        };
-      }) => { close: () => void };
+      const httpResponse = shouldUseInsecureTransport
+        ? await this.sendRequestWithHttpsFallback<T>(
+            url,
+            requestBody,
+            allowInsecureTls
+          )
+        : await this.sendRequestWithFetch<T>(
+            url,
+            requestBody,
+            allowInsecureTls
+          );
 
-      let dispatcher: { close?: () => void } | undefined;
-      try {
-        // Use eval-based dynamic import to avoid build-time resolution
-        const mod = (await (0, eval)("import('undici')")) as {
-          Agent: AgentFactory;
-        };
-        const Agent = mod.Agent;
-        dispatcher = new Agent({
-          connect: {
-            timeout: 30000,
-            tls: isUat ? { rejectUnauthorized: false } : undefined
-          }
-        });
-      } catch {
-        // If undici isn't available, proceed without custom dispatcher
-        dispatcher = undefined;
-      }
-
-      const controller = new AbortController();
-      const totalTimeout = setTimeout(() => controller.abort(), 45000); // 45s overall timeout
-
-      type ExtendedRequestInit = RequestInit & {
-        dispatcher?: { close?: () => void };
-      };
-
-      const response = await fetch(url, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Basic ${this.authHeader}`
-        },
-        body: JSON.stringify(requestBody),
-        dispatcher,
-        signal: controller.signal
-      } as ExtendedRequestInit);
-
-      clearTimeout(totalTimeout);
-
-      if (!response.ok) {
-        throw new Error(`HTTP error! status: ${response.status}`);
-      }
-
-      const result = (await response.json()) as ProntoApiResponse & T;
-      
-      console.log(`🚚 Pronto API Response: ${method}`, result);
-      
-      // Check for API-level errors
-      if (result.status === "0") {
-        throw new Error(`Pronto API error: ${result.status_ref || 'Unknown error'}`);
-      }
-
-      return result;
+      return this.processResponse(method, httpResponse);
     } catch (error) {
-      console.error(`❌ Pronto API request failed for method ${method} (attempt ${retryCount + 1}):`, error);
-      
-      // Retry logic for connection timeouts and network errors
-      if (retryCount < 2 && error instanceof Error && (
-        error.message.includes('Connect Timeout') ||
-        error.message.includes('fetch failed') ||
-        error.message.includes('ECONNRESET') ||
-        error.message.includes('ENOTFOUND')
-      )) {
-        const delay = (retryCount + 1) * 2000; // 2s, 4s delays
-        console.log(`🔄 Retrying Pronto API request in ${delay}ms...`);
-        await new Promise(resolve => setTimeout(resolve, delay));
-        return this.makeRequest(method, data, retryCount + 1);
+      if (
+        allowInsecureTls &&
+        !shouldUseInsecureTransport &&
+        isCertificateError(error)
+      ) {
+        console.warn(
+          `⚠️ Pronto API TLS validation failed for ${method}; retrying without certificate verification.`
+        );
+        return this.makeRequest(method, data, retryCount, true);
       }
-      
+
+      console.error(
+        `❌ Pronto API request failed for method ${method} (attempt ${retryCount + 1}):`,
+        error
+      );
+
+      if (retryCount < 2 && shouldRetryRequest(error)) {
+        const delay = (retryCount + 1) * 2000;
+        console.log(`🔄 Retrying Pronto API request in ${delay}ms...`);
+        await new Promise((resolve) => setTimeout(resolve, delay));
+        return this.makeRequest(method, data, retryCount + 1, forceInsecureTls);
+      }
+
       throw error;
     }
   }
+
+  private async sendRequestWithFetch<T extends Record<string, unknown>>(
+    url: string,
+    requestBody: Record<string, unknown>,
+    allowInsecureTls: boolean
+  ): Promise<ProntoHttpResponse<T>> {
+    type AgentFactory = new (options: {
+      connect?: {
+        timeout?: number;
+        tls?: { rejectUnauthorized?: boolean };
+      };
+    }) => { close: () => void };
+
+    let dispatcher: { close?: () => void } | undefined;
+    try {
+      const mod = (await (0, eval)("import('undici')")) as {
+        Agent: AgentFactory;
+      };
+      const Agent = mod.Agent;
+      dispatcher = new Agent({
+        connect: {
+          timeout: 30000,
+          tls: allowInsecureTls ? { rejectUnauthorized: false } : undefined,
+        },
+      });
+    } catch {
+      dispatcher = undefined;
+    }
+
+    const controller = new AbortController();
+    const totalTimeout = setTimeout(() => controller.abort(), 45000);
+
+    type ExtendedRequestInit = RequestInit & {
+      dispatcher?: { close?: () => void };
+    };
+
+    try {
+      const response = await fetch(url, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Basic ${this.authHeader}`,
+        },
+        body: JSON.stringify(requestBody),
+        dispatcher,
+        signal: controller.signal,
+      } as ExtendedRequestInit);
+
+      const body = (await response.json()) as ProntoApiResponse & T;
+      return {
+        ok: response.ok,
+        status: response.status,
+        body,
+      };
+    } finally {
+      clearTimeout(totalTimeout);
+      dispatcher?.close?.();
+    }
+  }
+
+  private async sendRequestWithHttpsFallback<
+    T extends Record<string, unknown>
+  >(
+    url: string,
+    requestBody: Record<string, unknown>,
+    allowInsecureTls: boolean
+  ): Promise<ProntoHttpResponse<T>> {
+    const parsedUrl = new URL(url);
+    const bodyPayload = JSON.stringify(requestBody);
+
+    const agent = new https.Agent({
+      rejectUnauthorized: !allowInsecureTls,
+    });
+
+    return new Promise((resolve, reject) => {
+      const requestOptions: https.RequestOptions = {
+        method: "POST",
+        hostname: parsedUrl.hostname,
+        port:
+          parsedUrl.port ||
+          (parsedUrl.protocol === "https:" ? 443 : 80),
+        path: `${parsedUrl.pathname}${parsedUrl.search}`,
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Basic ${this.authHeader}`,
+        },
+        agent,
+      };
+
+      const req = https.request(requestOptions, (res) => {
+        const chunks: Array<string> = [];
+        res.on("data", (chunk) =>
+          chunks.push(
+            typeof chunk === "string" ? chunk : chunk.toString("utf8")
+          )
+        );
+        res.on("end", () => {
+          const raw = chunks.join("");
+          try {
+            const body = raw
+              ? (JSON.parse(raw) as ProntoApiResponse & T)
+              : ({ status: "0" } as ProntoApiResponse & T);
+            resolve({
+              ok:
+                !!res.statusCode &&
+                res.statusCode >= 200 &&
+                res.statusCode < 300,
+              status: res.statusCode ?? 0,
+              body,
+            });
+          } catch (parseError) {
+            reject(parseError);
+          } finally {
+            agent.destroy();
+          }
+        });
+      });
+
+      req.on("error", (error) => {
+        agent.destroy();
+        reject(error);
+      });
+
+      req.setTimeout(45000, () => {
+        req.destroy(new Error("HTTPS request timeout"));
+      });
+
+      req.write(bodyPayload);
+      req.end();
+    });
+  }
+
+  private processResponse<T extends Record<string, unknown>>(
+    method: string,
+    response: ProntoHttpResponse<T>
+  ): ProntoApiResponse & T {
+    if (!response.ok) {
+      throw new Error(`HTTP error! status: ${response.status}`);
+    }
+
+    const result = response.body;
+
+    console.log(`🚚 Pronto API Response: ${method}`, result);
+
+    if (result.status === "0") {
+      throw new Error(
+        `Pronto API error: ${result.status_ref || "Unknown error"}`
+      );
+    }
+
+    return result;
+  }
+
+  private shouldAllowInsecureTls(): boolean {
+    if (process.env.PRONTO_ALLOW_INSECURE_TLS === "true") {
+      return true;
+    }
+
+    return (
+      process.env.NODE_ENV === "development" ||
+      this.config.baseUrl.includes("uat-api")
+    );
+  }
+}
+
+function shouldRetryRequest(error: unknown): boolean {
+  if (!(error instanceof Error)) {
+    return false;
+  }
+
+  const message = error.message || "";
+
+  return (
+    message.includes("Connect Timeout") ||
+    message.includes("fetch failed") ||
+    message.includes("ECONNRESET") ||
+    message.includes("ENOTFOUND") ||
+    message.includes("request timeout")
+  );
+}
+
+function isCertificateError(error: unknown): boolean {
+  const seen = new Set<unknown>();
+  let current: unknown = error;
+
+  while (current && typeof current === "object" && !seen.has(current)) {
+    seen.add(current);
+
+    const err = current as NodeJS.ErrnoException & { cause?: unknown };
+    const message = err.message || "";
+    const code = err.code || "";
+
+    if (
+      code === "CERT_HAS_EXPIRED" ||
+      code === "DEPTH_ZERO_SELF_SIGNED_CERT" ||
+      code === "UNABLE_TO_VERIFY_LEAF_SIGNATURE" ||
+      message.includes("CERT_HAS_EXPIRED") ||
+      message.includes("self signed certificate") ||
+      message.includes("unable to verify the first certificate")
+    ) {
+      return true;
+    }
+
+    current = err.cause;
+  }
+
+  return false;
 }
 
 /**
