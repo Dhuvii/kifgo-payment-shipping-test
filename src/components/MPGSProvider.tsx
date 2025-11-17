@@ -1,148 +1,137 @@
 "use client";
 
+import Script from "next/script";
 import {
   createContext,
-  useCallback,
   useContext,
   useEffect,
-  useMemo,
-  useRef,
   useState,
+  ReactNode,
 } from "react";
 
+// TypeScript definitions for MPGS
 declare global {
   interface Window {
     Checkout?: {
-      configure: (options: Record<string, unknown>) => void;
+      configure: (config: { session: { id: string } }) => void;
       showPaymentPage: () => void;
-      destroy?: () => void;
     };
-    mpgsAsyncError?: () => void;
-    mpgsAsyncCancel?: () => void;
+    cancelCallback?: () => void;
+    errorCallback?: (error: unknown) => void;
+    successCallback?: (data: unknown) => void;
   }
 }
 
-interface MPGSContextValue {
+interface MPGSContextType {
   isLoaded: boolean;
   isError: boolean;
-  configureSession: (sessionId: string, options?: Record<string, unknown>) => void;
+  configureSession: (sessionId: string) => void;
   showPaymentPage: () => void;
 }
 
-const MPGSContext = createContext<MPGSContextValue | null>(null);
+const MPGSContext = createContext<MPGSContextType | null>(null);
 
-const CHECKOUT_SRC = process.env.NEXT_PUBLIC_MPGS_CHECKOUT_SRC || "";
+export const useMPGS = () => {
+  const context = useContext(MPGSContext);
+  if (!context) {
+    throw new Error("useMPGS must be used within MPGSProvider");
+  }
+  return context;
+};
 
-export const MPGSProvider = ({ children }: { children: React.ReactNode }) => {
-  const [isLoaded, setIsLoaded] = useState(
-    () => typeof window !== "undefined" && !!window.Checkout
-  );
-  const [isError, setIsError] = useState(!CHECKOUT_SRC);
-  const configuredSession = useRef<string | null>(null);
-  const scriptRef = useRef<HTMLScriptElement | null>(null);
+interface MPGSProviderProps {
+  children: ReactNode;
+}
+
+export const MPGSProvider = ({ children }: MPGSProviderProps) => {
+  const [isLoaded, setIsLoaded] = useState(false);
+  const [isError, setIsError] = useState(false);
+  const [currentSessionId, setCurrentSessionId] = useState<string | null>(null);
 
   useEffect(() => {
-    if (typeof window === "undefined") {
-      return;
-    }
-
-    if (!CHECKOUT_SRC) {
-      console.error(
-        "NEXT_PUBLIC_MPGS_CHECKOUT_SRC is not configured. MPGS checkout cannot load."
-      );
-      return;
-    }
-
-    if (window.Checkout) {
-      return;
-    }
-
-    const script = document.createElement("script");
-    script.src = CHECKOUT_SRC;
-    script.async = true;
-    script.dataset.error = "mpgsAsyncError";
-    script.dataset.cancel = "mpgsAsyncCancel";
-    script.onload = () => setIsLoaded(true);
-    script.onerror = () => setIsError(true);
-
-    window.mpgsAsyncError = () => setIsError(true);
-    window.mpgsAsyncCancel = () => {
-      configuredSession.current = null;
+    // Set up global callbacks
+    window.cancelCallback = function () {
+      console.log("MPGS: Payment cancelled");
     };
 
-    document.body.appendChild(script);
-    scriptRef.current = script;
+    window.errorCallback = function (error) {
+      console.log("MPGS: Payment error", error);
+      setIsError(true);
+    };
 
-    return () => {
-      if (scriptRef.current?.parentNode) {
-        scriptRef.current.parentNode.removeChild(scriptRef.current);
-      }
-      if (window.Checkout?.destroy) {
-        window.Checkout.destroy();
-      }
-      window.Checkout = undefined;
-      configuredSession.current = null;
-      window.mpgsAsyncError = undefined;
-      window.mpgsAsyncCancel = undefined;
+    window.successCallback = function (data) {
+      console.log("MPGS: Payment success", data);
     };
   }, []);
 
-  const configureSession = useCallback(
-    (sessionId: string, options?: Record<string, unknown>) => {
-      if (!window.Checkout) {
-        throw new Error("MPGS Checkout has not finished loading.");
-      }
+  const configureSession = (sessionId: string) => {
+    if (!window.Checkout) {
+      console.error("MPGS Checkout not loaded");
+      return;
+    }
 
+    try {
       window.Checkout.configure({
         session: {
           id: sessionId,
         },
-        interaction: {
-          merchant: {
-            name: "Kifgo",
-          },
-          displayControl: {
-            billingAddress: "HIDE",
-            shippingAddress: "HIDE",
-          },
-        },
-        ...options,
       });
+      setCurrentSessionId(sessionId);
+      console.log("MPGS: Session configured", sessionId);
+    } catch (error) {
+      console.error("MPGS: Failed to configure session", error);
+      setIsError(true);
+    }
+  };
 
-      configuredSession.current = sessionId;
-    },
-    []
-  );
-
-  const showPaymentPage = useCallback(() => {
+  const showPaymentPage = () => {
     if (!window.Checkout) {
-      throw new Error("MPGS Checkout has not finished loading.");
+      console.error("MPGS Checkout not loaded");
+      return;
     }
 
-    if (!configuredSession.current) {
-      throw new Error("Call configureSession before opening the checkout.");
+    if (!currentSessionId) {
+      console.error("MPGS: No session configured");
+      return;
     }
 
-    window.Checkout.showPaymentPage();
-  }, []);
+    try {
+      window.Checkout.showPaymentPage();
+    } catch (error) {
+      console.error("MPGS: Failed to show payment page", error);
+      setIsError(true);
+    }
+  };
 
-  const value = useMemo(
-    () => ({
-      isLoaded,
-      isError,
-      configureSession,
-      showPaymentPage,
-    }),
-    [configureSession, isError, isLoaded, showPaymentPage]
+  const handleScriptLoad = () => {
+    console.log("MPGS: Script loaded successfully");
+    setIsLoaded(true);
+    setIsError(false);
+  };
+
+  const handleScriptError = () => {
+    console.error("MPGS: Failed to load script");
+    setIsError(true);
+  };
+
+  const contextValue: MPGSContextType = {
+    isLoaded,
+    isError,
+    configureSession,
+    showPaymentPage,
+  };
+
+  return (
+    <MPGSContext.Provider value={contextValue}>
+      <Script
+        src="https://cbcmpgs.gateway.mastercard.com/checkout/version/61/checkout.js"
+        data-error="errorCallback"
+        data-cancel="cancelCallback"
+        onLoad={handleScriptLoad}
+        onError={handleScriptError}
+        strategy="lazyOnload"
+      />
+      {children}
+    </MPGSContext.Provider>
   );
-
-  return <MPGSContext.Provider value={value}>{children}</MPGSContext.Provider>;
-};
-
-export const useMPGS = () => {
-  const ctx = useContext(MPGSContext);
-  if (!ctx) {
-    throw new Error("useMPGS must be used within an MPGSProvider");
-  }
-  return ctx;
 };
