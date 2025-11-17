@@ -56,6 +56,8 @@ export interface CreatePaymentSessionInput {
   isSensitive: boolean;
   specialNotes?: string;
   prontoCustomerCode?: string;
+  prontoAreaCode?: string;
+  prontoCost?: number;
   metadata?: Record<string, unknown>;
 }
 
@@ -175,6 +177,8 @@ export async function createPaymentSession(
           is_sensitive,
           special_notes,
           pronto_customer_code,
+          pronto_area_code,
+          pronto_cost,
           metadata,
           created_at,
           updated_at
@@ -198,6 +202,8 @@ export async function createPaymentSession(
           $isSensitive,
           $specialNotes,
           $prontoCustomerCode,
+          $prontoAreaCode,
+          $prontoCost,
           $metadata,
           $createdAt,
           $updatedAt
@@ -223,6 +229,9 @@ export async function createPaymentSession(
         $isSensitive: data.isSensitive ? 1 : 0,
         $specialNotes: data.specialNotes ?? null,
         $prontoCustomerCode: data.prontoCustomerCode ?? null,
+        $prontoAreaCode: data.prontoAreaCode ?? null,
+        $prontoCost:
+          typeof data.prontoCost === "number" ? data.prontoCost : null,
         $metadata: data.metadata ? JSON.stringify(data.metadata) : null,
         $createdAt: now,
         $updatedAt: now,

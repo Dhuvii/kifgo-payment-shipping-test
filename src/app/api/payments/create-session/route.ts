@@ -5,6 +5,10 @@ import handleError from "../../helpers/handleError";
 import { apiStatus } from "../../helpers/apiStatus";
 import { CreatePaymentSessionSchema } from "@/schemas/payment.schema";
 import { createPaymentSession } from "@/lib/repositories/paymentSessions";
+import {
+  createProntoApiService,
+  getAreaCodeForLocation,
+} from "@/lib/prontoApiService";
 
 /**
  * @route POST /api/payments/create-session
@@ -29,7 +33,6 @@ export async function POST(request: NextRequest) {
       MPGS_API_PASSWORD,
       MPGS_API_BASE_URL,
       BASE_URL,
-      MPGS_CURRENCY,
     };
 
     for (const [key, value] of Object.entries(requiredEnvVars)) {
@@ -57,19 +60,73 @@ export async function POST(request: NextRequest) {
 
     const validatedData = CreatePaymentSessionSchema.parse(normalizedBody);
 
-    const { amount, description, sender, receiver, shipment } = validatedData;
+    const {
+      amount: baseAmount,
+      description,
+      sender,
+      receiver,
+      shipment,
+    } = validatedData;
     const orderId = validatedData.orderId || crypto.randomUUID();
-    const baseCurrency = validatedData.currency || MPGS_CURRENCY;
-    const currency = baseCurrency as string;
+    const currency = validatedData.currency || MPGS_CURRENCY;
 
-    // --- 3. Construct API URL ---
+    if (!currency) {
+      throw new Error(
+        "Configuration error: Missing currency (provide `currency` in the request or set MPGS_CURRENCY)",
+      );
+    }
+
+    // --- 3. Calculate delivery charges via Pronto ---
+    const prontoCustomerCode =
+      shipment.customerCode ||
+      process.env.PRONTO_CUSTOMER_CODE ||
+      "A001";
+    const prontoAreaCode = getAreaCodeForLocation(shipment.location);
+    const prontoApi = createProntoApiService();
+
+    const shippingQuote = await prontoApi
+      .calculateShippingCost({
+        customerCode: prontoCustomerCode,
+        pkgWeight: shipment.weight,
+        prontoAc: prontoAreaCode,
+      })
+      .catch((shippingError) => {
+        console.error(
+          "Failed to retrieve Pronto delivery charges",
+          shippingError,
+        );
+        throw new Error(
+          "Unable to calculate delivery charges for this location. Please verify the destination and try again.",
+        );
+      });
+
+    const rawDeliveryCharge = shippingQuote?.live_amount?.amount;
+    const parsedDeliveryCharge = Number.parseFloat(
+      typeof rawDeliveryCharge === "string" ? rawDeliveryCharge : "",
+    );
+    if (!Number.isFinite(parsedDeliveryCharge)) {
+      throw new Error(
+        "Pronto did not return a valid delivery charge for this request.",
+      );
+    }
+
+    const deliveryCharge = Number(parsedDeliveryCharge.toFixed(2));
+    const totalAmount = Number((baseAmount + deliveryCharge).toFixed(2));
+    const pricingBreakdown = {
+      itemAmount: baseAmount,
+      deliveryCharge,
+      totalAmount,
+      currency,
+    };
+
+    // --- 4. Construct API URL ---
     const apiUrl = `${MPGS_API_BASE_URL}/api/rest/version/${MPGS_API_VERSION}/merchant/${MPGS_MERCHANT_ID}/session`;
 
-    // --- 4. Prepare Authentication Header ---
+    // --- 5. Prepare Authentication Header ---
     const username = `merchant.${MPGS_MERCHANT_ID}`;
     const authHeader = `Basic ${Buffer.from(`${username}:${MPGS_API_PASSWORD}`).toString("base64")}`;
 
-    // --- 5. Prepare Request Body ---
+    // --- 6. Prepare Request Body ---
     const requestBody = {
       apiOperation: "CREATE_CHECKOUT_SESSION",
       interaction: {
@@ -81,14 +138,14 @@ export async function POST(request: NextRequest) {
       },
       order: {
         id: orderId,
-        amount: amount.toFixed(2),
+        amount: totalAmount.toFixed(2),
         currency,
         description: description.substring(0, 127),
         customerOrderDate: format(new Date(), "yyyy-MM-dd"),
       },
     };
 
-    // --- 6. Make the API Call ---
+    // --- 7. Make the API Call ---
 
     const response = await fetch(apiUrl, {
       method: "POST",
@@ -124,7 +181,7 @@ export async function POST(request: NextRequest) {
     await createPaymentSession({
       sessionId: responseData.session.id,
       orderId,
-      amount,
+      amount: totalAmount,
       currency,
       description,
       senderName: sender.name,
@@ -139,8 +196,16 @@ export async function POST(request: NextRequest) {
       sameDayDelivery: shipment.sameDayDelivery,
       isSensitive: shipment.isSensitive,
       specialNotes: shipment.specialNotes,
-      prontoCustomerCode: shipment.customerCode,
+      prontoCustomerCode,
+      prontoAreaCode,
+      prontoCost: deliveryCharge,
       metadata: {
+        pricing: pricingBreakdown,
+        shippingQuote: {
+          areaCode: prontoAreaCode,
+          customerCode: prontoCustomerCode,
+          response: shippingQuote,
+        },
         gatewayResponse: responseData,
       },
     });
@@ -152,6 +217,10 @@ export async function POST(request: NextRequest) {
         data: {
           orderId,
           sessionId: responseData.session.id,
+          amount: totalAmount,
+          currency,
+          deliveryCharge,
+          pricing: pricingBreakdown,
           gatewayResponse: responseData,
           shipping: {
             sender,

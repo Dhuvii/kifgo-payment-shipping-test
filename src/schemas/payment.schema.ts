@@ -41,6 +41,15 @@ export const PaymentSessionResponseSchema = z.object({
   data: z.object({
     orderId: z.string(),
     sessionId: z.string(),
+    amount: z.number(),
+    currency: z.string(),
+    deliveryCharge: z.number(),
+    pricing: z.object({
+      itemAmount: z.number(),
+      deliveryCharge: z.number(),
+      totalAmount: z.number(),
+      currency: z.string(),
+    }),
     gatewayResponse: z.any(),
     shipping: z.object({
       sender: ShipmentPartySchema,
